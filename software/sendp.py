@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import yaml
 
-from scapy.all import Ether, IP
+from scapy.all import Ether, IP, sendp
 from scapy.packet import Packet
 from scapy.fields import BitField, ByteField, SignedShortField
 from scapy.utils import PcapWriter
@@ -27,7 +27,7 @@ class ml_result_h(Packet):
     ]
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Save Shapeshifter dataset packets to PCAP.")
+    parser = argparse.ArgumentParser(description="Send Shapeshifter dataset packets, then save them to PCAP.")
     parser.add_argument("--config", type=str, required=True, help="Configuration to use.")
     args = parser.parse_args()
 
@@ -55,6 +55,10 @@ if __name__ == "__main__":
         packets.append(pkt)
         if packet_index % 1000 == 0 or packet_index == packet_count:
             print(f"Prepared {packet_index}/{packet_count} packets", flush=True)
+
+    print(f"Sending {packet_count} packets on veth1...", flush=True)
+    sendp(packets, iface="veth1", count=1, verbose=False)
+    print(f"Sent {packet_count}/{packet_count} packets", flush=True)
 
     print(f"Saving to PCAP... {pcap_path}", flush=True)
     with PcapWriter(str(pcap_path), linktype=1) as capture:
