@@ -6,7 +6,7 @@ from pathlib import Path
 import joblib
 import numpy as np
 import yaml
-from scapy.all import Ether, IP, TCP, sniff
+from scapy.all import Ether, sniff
 from scapy.utils import PcapReader, PcapWriter
 from sklearn.cluster import KMeans
 from sklearn.ensemble import IsolationForest
@@ -26,8 +26,8 @@ def is_ml_packet(packet):
     return (
         Ether in packet
         and packet[Ether].dst == receiver["dst_mac"]
-        and IP in packet and TCP in packet and packet[TCP].dport == 12345
-        and len(bytes(packet[TCP].payload)) >= FEATURE_SIZE + RESULT_SIZE
+        and packet[Ether].type == 0x88B5
+        and len(bytes(packet[Ether].payload)) >= FEATURE_SIZE + RESULT_SIZE
     )
 
 
@@ -35,7 +35,7 @@ def capture_packet(packet):
     global captured_count
     if capture is not None:
         capture.write(packet)
-    payload = bytes(packet[TCP].payload)
+    payload = bytes(packet[Ether].payload)
     result = ml_result_h(payload[FEATURE_SIZE:FEATURE_SIZE + RESULT_SIZE])
     predictions.append([result.result, result.result_2])
     writer.writerow(predictions[-1])
