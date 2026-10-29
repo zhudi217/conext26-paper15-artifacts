@@ -48,8 +48,7 @@ source ~/setup-open-p4studio.bash
 ## Deploy and Run ShapeShifter
 ### Install Dependencies
 ```
-python3 -m pip install joblib xgboost scikit-learn==1.7.1
-sudo python3 -m pip install scapy numpy xgboost scikit-learn==1.7.1 joblib
+python3 -m pip install scapy joblib numpy xgboost scikit-learn==1.7.1
 ```
 
 ### Compile the Data Plane Program
