@@ -60,7 +60,7 @@ source ~/setup-open-p4studio.bash
 
 rm -rf   $SDE/build/p4-build/my_program
 mkdir -p $SDE/build/p4-build/ss
-cd $SDE/build/p4-build/shapeshifter
+cd $SDE/build/p4-build/ss
 
 cmake $SDE/p4studio                                         \
      -DCMAKE_MODULE_PATH="$SDE/cmake"                       \
