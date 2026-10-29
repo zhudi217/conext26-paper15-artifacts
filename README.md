@@ -5,7 +5,7 @@ Dear CoNEXT '26 AEC, thank you for evaluating our paper's artifacts. You will fi
 ### Setup
 We have prepared a configured VM for reproducing our experimental results. The VM can be downloaded here: [TODO]. Alternatively, the following dependencies are required to execute the experiments:
 ```
-sudo apt install -y git
+sudo apt install -y git jupyter-core
 python3 -m pip install notebook numpy matplotlib pandas xgboost scikit-learn-intelex scikit-learn==1.7.1
 ```
 Then clone ShapeShifter
