@@ -52,7 +52,7 @@ python3 -m pip install scapy joblib numpy xgboost scikit-learn==1.7.1
 ```
 
 ### Compile the Data Plane Program
-Open a new terminal, ```terminal1```, and compile ShapeShifter's data plane program. We use the SRAM version as an exmaple.
+Open a new terminal, ```terminal1```, and compile ShapeShifter's data plane program. We use the SRAM version as an example.
 ```
 % Execute the following commands in terminal1
 cd ~/open-p4studio/
@@ -92,7 +92,7 @@ source ~/setup-open-p4studio.bash
 ```
 
 ### Prepare an Experiment with Pretrained Models
-Open a new terminal, ```terminal3``` and run the following command. The command converts a pretrained model into table entries and install them into the data plane.
+Open a new terminal, ```terminal3``` and run the following command. The command converts a pretrained model into table entries and installs them into the data plane.
 ```
 cd ~/open-p4studio
 source ~/setup-open-p4studio.bash
@@ -100,9 +100,9 @@ source ~/setup-open-p4studio.bash
 cd ~/conext26-paper15-artifacts
 python3 ss_prepare.py --target model --dataset ciciot22 --model ss_dt_ds2
 ```
-To run with a different model, put the pretrained model under ```models``` directory.
+To run with a different model, put the pretrained model under the ```models``` directory.
 
-### Run an Prepared Experiment and Parse the Results
+### Run a Prepared Experiment and Parse the Results
 To run the experiment, we will use ```terminal3``` as the sender and a new terminal, ```terminal4``` to receive packets. First, set up the receiver in ```terminal4```.
 ```
 cd ~/conext26-paper15-artifacts
