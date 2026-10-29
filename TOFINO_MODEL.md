@@ -12,19 +12,30 @@ The following instructions tell you how to install the necessary environments to
 ```
 sudo apt install -y git
 ```
-
-## Build and Install Intel® P4 Studio Software Development Environment (SDE)
-### Clone the SDE from GitHub
+## Clone Necessary Repositories
+### Clone the Open-P4Studio from GitHub
 ```
 git clone https://github.com/p4lang/open-p4studio.git
 cd open-p4studio
 git submodule update --init --recursive
 ```
 
+### Clone ShapeShifter
+```
+cd ~
+git clone https://github.com/zhudi217/conext26-paper15-artifacts.git
+```
+
+## Build and Install Intel® P4 Studio Software Development Environment (SDE)
+### Copy SDE Configuration
+```
+cp ~/conext26-paper15-artifacts/tofino2_ss.yaml ~/open-p4studio/p4studio/profiles/tofino2_ss.yaml
+```
+
 ### Install the SDE
 In the ```open-p4studio``` directory, run
 ```
-./p4studio/p4studio profile apply ./p4studio/profiles/testing.yaml
+./p4studio/p4studio profile apply ./p4studio/profiles/tofino2_ss.yaml
 ```
 This command will check system compatibility and install necessary dependencies for the SDE. The installation will take about 60 minutes.
 
@@ -35,14 +46,6 @@ source ~/setup-open-p4studio.bash
 ```
 
 ## Deploy and Run ShapeShifter
-### Clone Shapeshifter from GitHub
-Clone the code, scripts and preprocessed dataset of Shapeshifter with the following commands
-```
-cd ~
-git clone https://github.com/zhudi217/conext26-paper15-artifacts.git
-cd conext26-paper15-artifacts
-```
-
 ### Install Dependencies
 ```
 python3 -m pip install joblib xgboost scikit-learn==1.7.1
