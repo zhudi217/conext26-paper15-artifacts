@@ -1,4 +1,5 @@
 # ShapeShifter Deployment on Real Tofino 2 Hardware
+The instructions here provide steps to deploy ShapeShifter on real Tofino 2 hardware and prepare verification experiments to test the functionalities of the program.
 
 ## Clone ShapeShifter
 ```
@@ -12,6 +13,9 @@ cd conext26-paper15-artifacts
 bash p4_build.sh conext26-paper15-artifacts/p4/tofino_hardware/[sram/ss.p4 | tcam/ss_range.p4] P4_VERSION=p4_16 P4_ARCHITECTURE=t2na
 ./run_switchd.sh -p [ss | ss_range] --arch tf2
 ```
+
+## Configure Network Environment
+The verification scripts use ```network.yaml``` to assign correct MAC addresses to the packets when creating PCAP files and generate L2 forwarding entries. Please modify this file to reflect the network setup for verification.
 
 ## Prepare an Experiment with Pretrained Models
 Run the following command to prepare an experiment. The command converts a pretrained model into table entries and installs them into the data plane (if P4 SDE is present). The script also generates routing entries and pcap files for replaying. The ```--tcam``` specifies that the script targets the TCAM version of ShapeShifter.
