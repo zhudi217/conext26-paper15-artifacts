@@ -3,7 +3,7 @@ Dear CoNEXT '26 AEC, thank you for evaluating our paper's artifacts. You will fi
 
 ## Paper Results Reproduction
 ### Use the Configured VM
-We have prepared a configured VM for reproducing our experimental results. You can download the VM here: [TODO]. The username is ```reviewer```. The password is ```fun```.
+We have prepared a configured VM for reproducing our experimental results. You can download the VM here: [TODO]. The username is ```reviewer```. The account is passwordless.
 
 ### Configure Your Own Machine
 Alternatively, the following dependencies are required to execute the experiments:
