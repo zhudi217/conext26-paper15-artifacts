@@ -4,7 +4,7 @@ The following instructions tell you how to install the necessary environments to
 ## Recommended Setup
 - Ubuntu 22.04 with x86-64 architecture (required)
 - Memory: 8GB
-- Disk: 50 GB
+- Disk: 30 GB
 - ```sudo``` access (required).
 - Python >= 3.10
 
