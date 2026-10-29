@@ -8,6 +8,13 @@ We have prepared a configured VM for reproducing our experimental results. The V
 sudo apt install -y git jupyter-core
 python3 -m pip install notebook numpy matplotlib pandas xgboost scikit-learn-intelex scikit-learn==1.7.1
 ```
+Optionally, install the ```Times New Roman``` font for correct fonts in the figures.
+```
+sudo add-apt-repository multiverse
+sudo apt update
+sudo apt install ttf-mscorefonts-installer
+fc-cache -f
+```
 Then clone ShapeShifter
 ```
 git clone https://github.com/zhudi217/conext26-paper15-artifacts.git
