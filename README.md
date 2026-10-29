@@ -14,7 +14,7 @@ git clone https://github.com/zhudi217/conext26-paper15-artifacts.git
 ```
 
 ### Experiment Execution
-The Jupyter notebooks are located in the ```test``` directory. Please execute them to reproduce the results.
+The Jupyter notebooks are located in the ```test``` directory. You can launch Jupyter notebook with ```python3 -m notebook``` and run the notebooks one by one for reproduction.
 
 ### Reconfiguration Test Experiment
 If a real Tofino 2 switch is available, we provide a Python script to reconfigure models on the switch and measure the reconfiguration time. The script is located at ```conext26-paper15-artifacts/test/reconfiguration_test.py```. This script retrieves the IP address of the Tofino 2 switch from ```network.yaml```. To execute the script:
