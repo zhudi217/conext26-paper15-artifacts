@@ -7,7 +7,7 @@ import yaml
 
 from utils.generate_forwarding_rule import forwarding_rule_generation
 from utils.generate_pcap import generate_pcap
-from utils.model_conversion import TableEntry, convert_model
+from utils.model_conversion import TableEntry, convert_model, get_bfrt_prefix
 from utils.model_installation import install_model
 
 
@@ -47,10 +47,13 @@ def load_dataset(dataset_name):
 
 
 def prepare(model, config, tcam, *, target, selector, label_encoder, model_name, X_test):
-    output_path = ROOT / "x" / target / f"{model_name}_{'tcam' if tcam else 'sram'}.py"
+    output_dir = ROOT / "x" / target
+    model_dir = output_dir / model_name if target == "hardware" else output_dir
+    output_path = model_dir / f"{model_name}_{'tcam' if tcam else 'sram'}.py"
     conversion = convert_model(
         model=model, config=config, tcam=tcam,
         selector=selector, label_encoder=label_encoder, output_path=output_path,
+        installed_snapshot_path=output_dir / f"{get_bfrt_prefix(tcam).split('.')[1]}_installed_entries.json",
     )
     generate_pcap(X_test, conversion.metadata, config, conversion.output_path.with_suffix(".pcap"))
 

@@ -5,7 +5,7 @@ import itertools
 import json
 import math
 from collections import deque
-from dataclasses import asdict, dataclass, replace
+from dataclasses import dataclass, replace
 from numbers import Integral
 from pathlib import Path
 from types import SimpleNamespace
@@ -179,7 +179,7 @@ def emit_bfrt_python(path: Path, entries: list[TableEntry], *, tcam=False, old_e
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def convert_model_entries(model, config, tcam, *, selector, label_encoder):
+def convert_model_entries(model, config, tcam, *, selector, label_encoder, start_block_index=0):
     """Convert and validate a model in memory, without reading or writing artifacts."""
     if isinstance(model, DecisionTreeClassifier):
         converter = convert_tcam_dt if tcam else convert_dt
@@ -202,16 +202,26 @@ def convert_model_entries(model, config, tcam, *, selector, label_encoder):
     if tcam and converter in (convert_svm, convert_linear):
         raise NotImplementedError("TCAM conversion supports only DT, RF, XGB, and IF models")
     p4_config = resolve_p4_config(config, tcam=tcam)
-    return converter(model, selector, label_encoder, p4_config)
+    if not isinstance(start_block_index, Integral) or not 0 <= start_block_index < p4_config.P4_BLOCK_COUNT:
+        raise ValueError(f"start_block_index must be in 0..{p4_config.P4_BLOCK_COUNT - 1}")
+    entries, metadata = converter(
+        model, selector, label_encoder, p4_config, start_block_index=start_block_index,
+    )
+    if start_block_index:
+        metadata["start_block_index"] = int(start_block_index)
+    return entries, metadata
 
 
-def convert_model(model, config, tcam, *, selector, label_encoder, output_path):
+def convert_model(model, config, tcam, *, selector, label_encoder, output_path, installed_snapshot_path=None):
     entries, metadata = convert_model_entries(
         model, config, tcam, selector=selector, label_encoder=label_encoder,
     )
     result = ConversionResult(Path(output_path), entries, metadata)
     prefix = get_bfrt_prefix(tcam)
-    baseline_path = result.output_path.parent / f"{prefix.split('.')[1]}_installed_entries.json"
+    baseline_path = (
+        Path(installed_snapshot_path) if installed_snapshot_path is not None
+        else result.output_path.parent / f"{prefix.split('.')[1]}_installed_entries.json"
+    )
     old_entries = None
     baseline_snapshot = None
     if baseline_path.exists():
@@ -224,16 +234,7 @@ def convert_model(model, config, tcam, *, selector, label_encoder, output_path):
         result.entries, tcam=tcam, old_entries=old_entries, baseline_snapshot=baseline_snapshot,
     )
     emit_bfrt_python(result.output_path, result.entries, plan=result.plan)
-    # install_model promotes this candidate only after a successful installation.
-    result.snapshot_path.write_text(
-        json.dumps({"bfrt_prefix": prefix, "entries": [asdict(entry) for entry in entries]}, indent=2) + "\n",
-        encoding="utf-8",
-    )
     metadata["installed_snapshot_path"] = str(baseline_path)
-    metadata["snapshot_path"] = str(result.snapshot_path)
-    result.metadata_path.write_text(
-        json.dumps(result.metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8",
-    )
     return result
 
 
@@ -270,7 +271,7 @@ def validate_dt_inputs(model, selector, label_encoder, p4_config):
     return feature_indices
 
 
-def convert_tcam_dt(model, selector, label_encoder, p4_config):
+def convert_tcam_dt(model, selector, label_encoder, p4_config, *, start_block_index=0):
     feature_indices = validate_dt_inputs(model, selector, label_encoder, p4_config)
     compile_errors = []
     try:
@@ -279,8 +280,11 @@ def convert_tcam_dt(model, selector, label_encoder, p4_config):
             lambda root_node_id, root_intervals: (root_node_id,),
             p4_config=p4_config,
             pack_block=make_tcam_block_packer(model, len(feature_indices), p4_config),
+            available_blocks=p4_config.P4_BLOCK_COUNT - start_block_index,
         )
-        return compile_tcam_tree_entries(model, feature_indices, states, outcomes, transitions, p4_config)
+        return compile_tcam_tree_entries(
+            model, feature_indices, states, outcomes, transitions, p4_config, start_block_index=start_block_index,
+        )
     except ValueError as error:
         compile_errors.append(f"capacity-aware: {error}")
     for node_limit in range(p4_config.P4_SUBTREE_NODE_LIMIT_MAX, 0, -1):
@@ -289,14 +293,17 @@ def convert_tcam_dt(model, selector, label_encoder, p4_config):
                 model, len(feature_indices), QUANTIZED_MIN, QUANTIZED_MAX,
                 lambda root_node_id, root_intervals: pack_internal_subtree(model, root_node_id, node_limit),
                 p4_config=p4_config,
+                available_blocks=p4_config.P4_BLOCK_COUNT - start_block_index,
             )
-            return compile_tcam_tree_entries(model, feature_indices, states, outcomes, transitions, p4_config)
+            return compile_tcam_tree_entries(
+                model, feature_indices, states, outcomes, transitions, p4_config, start_block_index=start_block_index,
+            )
         except ValueError as error:
             compile_errors.append(f"limit {node_limit}: {error}")
     raise ValueError("SS TCAM DT conversion failed after packing attempts: " + " | ".join(compile_errors))
 
 
-def convert_dt(model, selector, label_encoder, p4_config):
+def convert_dt(model, selector, label_encoder, p4_config, *, start_block_index=0):
     feature_indices = validate_dt_inputs(model, selector, label_encoder, p4_config)
     compile_errors = []
     for node_limit in range(p4_config.P4_SUBTREE_NODE_LIMIT_MAX, 0, -1):
@@ -306,6 +313,7 @@ def convert_dt(model, selector, label_encoder, p4_config):
                 feature_indices=feature_indices,
                 node_limit=node_limit,
                 p4_config=p4_config,
+                start_block_index=start_block_index,
             )
         except ValueError as error:
             compile_errors.append(f"limit {node_limit}: {error}")
@@ -1035,13 +1043,17 @@ def compile_entries_for_limit(
     feature_indices: list[int],
     node_limit: int,
     p4_config: P4Config = DEFAULT_P4_CONFIG,
+    start_block_index: int = 0,
 ) -> tuple[list[TableEntry], dict[str, Any]]:
     states, outcomes, transitions = build_states_by_block(
         clf, len(feature_indices), QUANTIZED_MIN, QUANTIZED_MAX,
         lambda root_node_id, root_intervals: pack_internal_subtree(clf, root_node_id, node_limit),
         p4_config=p4_config,
+        available_blocks=p4_config.P4_BLOCK_COUNT - start_block_index,
     )
-    return compile_tree_entries(clf, feature_indices, states, outcomes, transitions, p4_config)
+    return compile_tree_entries(
+        clf, feature_indices, states, outcomes, transitions, p4_config, start_block_index=start_block_index,
+    )
 
 
 def build_dt_final_entries(reachable_classes, p4_config):
@@ -1071,20 +1083,24 @@ def build_rf_final_entries(reachable_classes, p4_config):
         )
 
 
-def tree_state_match(state, root_state_ids=(), local_state_ids=None):
+def tree_state_match(state, root_state_ids=(), local_state_ids=None, *, start_block_index=0):
     match = {}
-    if state.block_index > 0:
-        match[f"eg_md.subtree_idx_{state.block_index - 1}"] = (
-            0 if state.state_id in root_state_ids else (local_state_ids or {}).get(state.state_id, state.state_id)
+    physical_block = start_block_index + state.block_index
+    if physical_block > 0:
+        match[f"eg_md.subtree_idx_{physical_block - 1}"] = (
+            0 if state.block_index == 0 or state.state_id in root_state_ids
+            else (local_state_ids or {}).get(state.state_id, state.state_id)
         )
     match["hdr.ml_y.model"] = 0
     return match
 
 
-def tree_input_entries(states_by_block, lane_mapping, p4_config, root_state_ids=(), local_state_ids=None):
+def tree_input_entries(states_by_block, lane_mapping, p4_config, root_state_ids=(), local_state_ids=None,
+                       *, start_block_index=0):
     thresholds_by_block_group = lane_mapping.thresholds_by_block_lane
     for block_states in states_by_block:
         for state in block_states:
+            physical_block = start_block_index + state.block_index
             feature_by_lane = {
                 lane_mapping.lane_by_state_feature[(state.state_id, feature)]: feature
                 for feature in state.used_features
@@ -1096,9 +1112,11 @@ def tree_input_entries(states_by_block, lane_mapping, p4_config, root_state_ids=
                     else lane_mapping.physical_field_by_feature_lane[(feature, lane)]
                 )
                 yield TableEntry(
-                    table_name_select(state.block_index, lane),
-                    {"hdr.ml_y.model": 0, **tree_state_match(state, root_state_ids, local_state_ids)},
-                    select_action_name(state.block_index, physical_field), {},
+                    table_name_select(physical_block, lane),
+                    {"hdr.ml_y.model": 0, **tree_state_match(
+                        state, root_state_ids, local_state_ids, start_block_index=start_block_index,
+                    )},
+                    select_action_name(physical_block, physical_field), {},
                 )
 
     for (block_index, lane), thresholds in sorted(thresholds_by_block_group.items()):
@@ -1129,13 +1147,13 @@ def compile_tree_entries(
     clf, feature_indices, states_by_block, outcomes_by_state_id, transition_targets, p4_config,
     *, estimators_by_state=None, tree_slots_by_state=None, root_state_ids=(),
     prediction_value=dt_prediction_value, final_entry_builder=build_dt_final_entries,
-    materialize_entries=True, greedy_counting=False,
+    materialize_entries=True, greedy_counting=False, start_block_index=0,
 ):
     if greedy_counting and materialize_entries:
         raise ValueError("Reference greedy accounting is count-only")
     lane_mapping = assign_duplicated_feature_lanes(
         clf, states_by_block, len(feature_indices),
-        p4_config=p4_config, estimators_by_state=estimators_by_state,
+        p4_config=p4_config, estimators_by_state=estimators_by_state, start_block_index=start_block_index,
     )
     thresholds_by_block_group = lane_mapping.thresholds_by_block_lane
     validate_code_width(thresholds_by_block_group, p4_config=p4_config)
@@ -1150,10 +1168,12 @@ def compile_tree_entries(
 
     unused_select_actions = {
         select_action_name(block, field)
-        for block in range(p4_config.P4_BLOCK_COUNT)
+        for block in range(start_block_index, p4_config.P4_BLOCK_COUNT)
         for field in lane_mapping.unused_physical_field_by_lane.values()
     } if greedy_counting else set()
-    for entry in tree_input_entries(states_by_block, lane_mapping, p4_config, root_state_ids):
+    for entry in tree_input_entries(
+        states_by_block, lane_mapping, p4_config, root_state_ids, start_block_index=start_block_index,
+    ):
         if entry.action in unused_select_actions:
             continue
         append_entry(entry)
@@ -1162,6 +1182,7 @@ def compile_tree_entries(
     reachable_classes = {}
     for block_states in states_by_block:
         for state in block_states:
+            physical_block = start_block_index + state.block_index
             tree_slot = tree_slots_by_state.get(state.state_id, DT_PREDICTION_SLOT)
             feature_by_lane = {
                 lane_mapping.lane_by_state_feature[(state.state_id, feature)]: feature
@@ -1175,23 +1196,23 @@ def compile_tree_entries(
                         code_options.append((0,))
                     else:
                         low, high = outcome.intervals[feature]
-                        thresholds = thresholds_by_block_group[(state.block_index, lane)]
+                        thresholds = thresholds_by_block_group[(physical_block, lane)]
                         code_options.append(codes_for_interval(low, high, thresholds))
                 if outcome.leaf_class is not None:
-                    action = predict_action_name(state.block_index, tree_slot)
+                    action = predict_action_name(physical_block, tree_slot)
                     params = {"cls": prediction_value(outcome.leaf_class, p4_config=p4_config)}
                 else:
                     target = transition_targets.get((state.state_id, outcome_index))
                     if target is None:
                         raise ValueError(f"missing chained SS subtree state for root {outcome.next_root_node_id}")
-                    action = subtree_action_name(state.block_index)
+                    action = subtree_action_name(physical_block)
                     params = {"decision": target.state_id}
                 for code_tuple in itertools.product(*code_options):
                     if outcome.leaf_class is not None:
                         reachable_classes.setdefault(tree_slot, {})[outcome.leaf_class] = None
                     match = {f"code_{lane}": code for lane, code in enumerate(code_tuple)}
-                    match.update(tree_state_match(state, root_state_ids))
-                    table = table_name_aggregate(state.block_index)
+                    match.update(tree_state_match(state, root_state_ids, start_block_index=start_block_index))
+                    table = table_name_aggregate(physical_block)
                     key = (table, tuple(sorted(match.items())))
                     entry = TableEntry(table, match, action, params)
                     existing = aggregate_entries.get(key)
@@ -1221,11 +1242,12 @@ def compile_tcam_tree_entries(
     clf, feature_indices, states_by_block, outcomes_by_state_id, transition_targets, p4_config,
     *, estimators_by_state=None, tree_slots_by_state=None, root_state_ids=(), local_state_ids=None,
     prediction_value=dt_prediction_value, final_entry_builder=build_dt_final_entries,
-    materialize_entries=True,
+    materialize_entries=True, start_block_index=0,
 ):
     lane_mapping = assign_duplicated_feature_lanes(
         clf, states_by_block, len(feature_indices), p4_config=p4_config, estimators_by_state=estimators_by_state,
         threshold_count_fits=lambda count: count + 1 < (1 << p4_config.P4_CODE_BITS),
+        start_block_index=start_block_index,
     )
     thresholds_by_block_lane = lane_mapping.thresholds_by_block_lane
     validate_code_width(thresholds_by_block_lane, p4_config=p4_config)
@@ -1238,10 +1260,13 @@ def compile_tcam_tree_entries(
         if materialize_entries:
             entries.append(entry)
 
-    for entry in tree_input_entries(states_by_block, lane_mapping, p4_config, root_state_ids, local_state_ids):
+    for entry in tree_input_entries(
+        states_by_block, lane_mapping, p4_config, root_state_ids, local_state_ids, start_block_index=start_block_index,
+    ):
         append_entry(entry)
     for block_states in states_by_block:
         for state in block_states:
+            physical_block = start_block_index + state.block_index
             tree_slot = tree_slots_by_state.get(state.state_id, DT_PREDICTION_SLOT)
             feature_by_lane = {
                 lane_mapping.lane_by_state_feature[(state.state_id, feature)]: feature
@@ -1254,21 +1279,21 @@ def compile_tcam_tree_entries(
                     bounds = (0, 0)
                     if feature is not None:
                         low, high = outcome.intervals[feature]
-                        thresholds = thresholds_by_block_lane[(state.block_index, lane)]
+                        thresholds = thresholds_by_block_lane[(physical_block, lane)]
                         bounds = (code_for_value(low, thresholds), code_for_value(high, thresholds))
                     match[f"code_{lane}"] = bounds
-                match.update(tree_state_match(state, root_state_ids, local_state_ids))
+                match.update(tree_state_match(state, root_state_ids, local_state_ids, start_block_index=start_block_index))
                 if outcome.leaf_class is not None:
-                    action = predict_action_name(state.block_index, tree_slot)
+                    action = predict_action_name(physical_block, tree_slot)
                     params = {"cls": prediction_value(outcome.leaf_class, p4_config=p4_config)}
                     reachable_classes.setdefault(tree_slot, {})[outcome.leaf_class] = None
                 else:
                     target = transition_targets.get((state.state_id, outcome_index))
                     if target is None:
                         raise ValueError(f"missing chained TCAM subtree state for root {outcome.next_root_node_id}")
-                    action = subtree_action_name(state.block_index)
+                    action = subtree_action_name(physical_block)
                     params = {"decision": local_state_ids.get(target.state_id, target.state_id)}
-                table = table_name_aggregate(state.block_index)
+                table = table_name_aggregate(physical_block)
                 key = (table, tuple(sorted(match.items())))
                 entry = TableEntry(table, match, action, params)
                 existing = aggregate_entries.get(key)
@@ -1310,22 +1335,27 @@ def prepare_rf(model, selector, label_encoder, p4_config):
     return feature_indices
 
 
-def convert_rf(model, selector, label_encoder, p4_config):
+def convert_rf(model, selector, label_encoder, p4_config, *, start_block_index=0):
     feature_indices = prepare_rf(model, selector, label_encoder, p4_config)
-    return convert_forest(model.estimators_, feature_indices, p4_config, class_ids=model.classes_)
+    return convert_forest(
+        model.estimators_, feature_indices, p4_config, class_ids=model.classes_, start_block_index=start_block_index,
+    )
 
 
-def convert_tcam_rf(model, selector, label_encoder, p4_config):
+def convert_tcam_rf(model, selector, label_encoder, p4_config, *, start_block_index=0):
     feature_indices = prepare_rf(model, selector, label_encoder, p4_config)
-    return convert_tcam_forest(model.estimators_, feature_indices, p4_config, class_ids=model.classes_)
+    return convert_tcam_forest(
+        model.estimators_, feature_indices, p4_config, class_ids=model.classes_, start_block_index=start_block_index,
+    )
 
 
 def convert_tcam_forest(
     estimators, feature_indices, p4_config, *, class_ids=None, final_entry_builder=build_rf_final_entries,
+    start_block_index=0,
 ):
     if not estimators:
         raise ValueError("trained forest has no estimators")
-    max_trees = min(p4_config.P4_BLOCK_COUNT, p4_config.P4_PREDICTION_SLOTS)
+    max_trees = min(p4_config.P4_BLOCK_COUNT - start_block_index, p4_config.P4_PREDICTION_SLOTS)
     if len(estimators) > max_trees:
         raise ValueError(f"TCAM forest conversion supports at most {max_trees} trees")
     states_by_block, outcomes_by_state_id, transition_targets = [], {}, {}
@@ -1340,11 +1370,12 @@ def convert_tcam_forest(
                 estimator, len(feature_indices), QUANTIZED_MIN, QUANTIZED_MAX,
                 lambda root_node_id, root_intervals: (root_node_id,), p4_config=p4_config,
                 pack_block=make_tcam_block_packer(estimator, len(feature_indices), p4_config),
+                available_blocks=p4_config.P4_BLOCK_COUNT - start_block_index,
             )
         except ValueError as error:
             raise ValueError(f"TCAM forest conversion failed for tree slot {tree_slot}: {error}") from error
         start_block = len(states_by_block)
-        if start_block + len(states) > p4_config.P4_BLOCK_COUNT:
+        if start_block + len(states) > p4_config.P4_BLOCK_COUNT - start_block_index:
             raise ValueError("could not schedule the forest trees within the available TCAM ML blocks")
         shifted_states = {}
         for block_states in states:
@@ -1372,15 +1403,17 @@ def convert_tcam_forest(
         estimators_by_state=estimators_by_state, tree_slots_by_state=tree_slots_by_state,
         root_state_ids=root_state_ids, local_state_ids=local_state_ids,
         prediction_value=rf_prediction_token, final_entry_builder=final_entry_builder,
+        start_block_index=start_block_index,
     )
 
 
 def convert_forest(
     estimators, feature_indices, p4_config, *, class_ids=None, final_entry_builder=build_rf_final_entries,
+    start_block_index=0,
 ):
     if not estimators:
         raise ValueError("trained forest has no estimators")
-    max_trees = min(p4_config.P4_BLOCK_COUNT, p4_config.P4_PREDICTION_SLOTS)
+    max_trees = min(p4_config.P4_BLOCK_COUNT - start_block_index, p4_config.P4_PREDICTION_SLOTS)
     if len(estimators) > max_trees:
         raise ValueError(f"SS forest conversion supports at most {max_trees} trees")
     candidates = []
@@ -1397,13 +1430,14 @@ def convert_forest(
             states, outcomes, transitions = build_states_by_block(
                 estimator, len(feature_indices), QUANTIZED_MIN, QUANTIZED_MAX, pack_subtree,
                 p4_config=p4_config,
+                available_blocks=p4_config.P4_BLOCK_COUNT - start_block_index,
             )
         except ValueError as error:
             raise ValueError(f"SS forest conversion failed for tree slot {tree_slot}: {error}") from error
         candidates.append(ForestTreeCandidate(tree_slot, states, outcomes, transitions))
     return compile_forest_entries(
         estimators, candidates, feature_indices, p4_config,
-        class_ids=class_ids, final_entry_builder=final_entry_builder,
+        class_ids=class_ids, final_entry_builder=final_entry_builder, start_block_index=start_block_index,
     )
 
 
@@ -1523,8 +1557,9 @@ def pack_rf_capacity_subtree(
 
 def compile_forest_entries(
     estimators, candidates, feature_indices, p4_config, *, class_ids=None, final_entry_builder=build_rf_final_entries,
+    start_block_index=0,
 ):
-    if sum(len(candidate.states_by_block) for candidate in candidates) > p4_config.P4_BLOCK_COUNT:
+    if sum(len(candidate.states_by_block) for candidate in candidates) > p4_config.P4_BLOCK_COUNT - start_block_index:
         raise ValueError("could not schedule the forest trees within the available SS ML blocks")
     states_by_block = []
     outcomes_by_state_id = {}
@@ -1562,6 +1597,7 @@ def compile_forest_entries(
         estimators[0], feature_indices, states_by_block, outcomes_by_state_id, transition_targets, p4_config,
         estimators_by_state=estimators_by_state, tree_slots_by_state=tree_slots_by_state,
         root_state_ids=root_state_ids, prediction_value=rf_prediction_token, final_entry_builder=final_entry_builder,
+        start_block_index=start_block_index,
     )
 
 def tokenize_forest(trees, leaf_values, p4_config):
@@ -1714,14 +1750,18 @@ def prepare_xgb(model, selector, label_encoder, p4_config):
     return adapters, feature_indices, reachable_final_entries(adapters, len(feature_indices), classify)
 
 
-def convert_xgb(model, selector, label_encoder, p4_config):
+def convert_xgb(model, selector, label_encoder, p4_config, *, start_block_index=0):
     adapters, feature_indices, final_entries = prepare_xgb(model, selector, label_encoder, p4_config)
-    return convert_forest(adapters, feature_indices, p4_config, final_entry_builder=final_entries)
+    return convert_forest(
+        adapters, feature_indices, p4_config, final_entry_builder=final_entries, start_block_index=start_block_index,
+    )
 
 
-def convert_tcam_xgb(model, selector, label_encoder, p4_config):
+def convert_tcam_xgb(model, selector, label_encoder, p4_config, *, start_block_index=0):
     adapters, feature_indices, final_entries = prepare_xgb(model, selector, label_encoder, p4_config)
-    return convert_tcam_forest(adapters, feature_indices, p4_config, final_entry_builder=final_entries)
+    return convert_tcam_forest(
+        adapters, feature_indices, p4_config, final_entry_builder=final_entries, start_block_index=start_block_index,
+    )
 
 
 def average_path_length(sample_count):
@@ -1768,14 +1808,18 @@ def prepare_if(model, selector, label_encoder, p4_config):
     return adapters, feature_indices, reachable_final_entries(adapters, len(feature_indices), classify)
 
 
-def convert_if(model, selector, label_encoder, p4_config):
+def convert_if(model, selector, label_encoder, p4_config, *, start_block_index=0):
     adapters, feature_indices, final_entries = prepare_if(model, selector, label_encoder, p4_config)
-    return convert_forest(adapters, feature_indices, p4_config, final_entry_builder=final_entries)
+    return convert_forest(
+        adapters, feature_indices, p4_config, final_entry_builder=final_entries, start_block_index=start_block_index,
+    )
 
 
-def convert_tcam_if(model, selector, label_encoder, p4_config):
+def convert_tcam_if(model, selector, label_encoder, p4_config, *, start_block_index=0):
     adapters, feature_indices, final_entries = prepare_if(model, selector, label_encoder, p4_config)
-    return convert_tcam_forest(adapters, feature_indices, p4_config, final_entry_builder=final_entries)
+    return convert_tcam_forest(
+        adapters, feature_indices, p4_config, final_entry_builder=final_entries, start_block_index=start_block_index,
+    )
 
 @dataclass(frozen=True)
 class LinearCell:
@@ -1923,11 +1967,11 @@ def linear_contributions(model, feature_count, class_count):
     return contributions
 
 
-def convert_svm(model, selector, label_encoder, p4_config):
-    return convert_linear(model, selector, label_encoder, p4_config)
+def convert_svm(model, selector, label_encoder, p4_config, *, start_block_index=0):
+    return convert_linear(model, selector, label_encoder, p4_config, start_block_index=start_block_index)
 
 
-def convert_linear(model, selector, label_encoder, p4_config):
+def convert_linear(model, selector, label_encoder, p4_config, *, start_block_index=0):
     is_svm = isinstance(model, SVC)
     if is_svm and (model.kernel != "linear" or model.break_ties):
         raise ValueError("SS SVM conversion requires SVC(kernel='linear', break_ties=False)")
@@ -1959,7 +2003,7 @@ def convert_linear(model, selector, label_encoder, p4_config):
     class_pairs = list(itertools.combinations(range(class_count), 2))
     cells = [
         LinearCell(block, lane, block + lane, p4_config.P4_GROUP_LAYOUT[lane][block])
-        for block in range(p4_config.P4_BLOCK_COUNT)
+        for block in range(start_block_index, p4_config.P4_BLOCK_COUNT)
         for lane in range(p4_config.P4_LANE_COUNT)
         if block + lane < p4_config.P4_LINEAR_BUCKET_COUNT
     ]
