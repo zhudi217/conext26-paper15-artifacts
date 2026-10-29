@@ -55,7 +55,7 @@ def prepare(model, config, tcam, *, target, selector, label_encoder, model_name,
         selector=selector, label_encoder=label_encoder, output_path=output_path,
         installed_snapshot_path=output_dir / f"{get_bfrt_prefix(tcam).split('.')[1]}_installed_entries.json",
     )
-    generate_pcap(X_test, conversion.metadata, config, conversion.output_path.with_suffix(".pcap"))
+    generate_pcap(X_test, conversion.metadata, config, conversion.output_path.with_suffix(".pcap"), target=target)
 
     forwarding_entries = []
     if target == "hardware":

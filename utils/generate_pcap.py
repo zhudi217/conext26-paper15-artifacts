@@ -29,7 +29,9 @@ class ml_result_h(Packet):
     ]
 
 
-def generate_pcap(X_test, metadata, config, output_path):
+def generate_pcap(X_test, metadata, config, output_path, *, target="hardware"):
+    if target not in ("hardware", "model"):
+        raise ValueError(f"Unsupported PCAP target: {target!r}")
     X_test = np.asarray(X_test)
     if X_test.ndim != 2 or not len(X_test) or X_test.dtype.kind not in "iuf":
         raise ValueError("X_test must be a nonempty 2D numeric feature matrix")
@@ -59,10 +61,11 @@ def generate_pcap(X_test, metadata, config, output_path):
             or np.any(values < QUANTIZED_MIN) or np.any(values > QUANTIZED_MAX)):
         raise ValueError(f"mapped features must be integers in {QUANTIZED_MIN}..{QUANTIZED_MAX}")
     network = config["network"]
-    base_packet = (
-        Ether(src=network["sender"]["mac"], dst=network["receiver"]["mac"])
-        / IP(src="10.0.0.1", dst="10.0.0.2") / TCP(dport=12345)
-    )
+    base_packet = Ether(src=network["sender"]["mac"], dst=network["receiver"]["mac"])
+    if target == "model":
+        base_packet.type = 0x88B5
+    else:
+        base_packet = base_packet / IP(src="10.0.0.1", dst="10.0.0.2") / TCP(dport=12345)
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with PcapWriter(str(output_path), linktype=1, append=False) as writer:
