@@ -2,8 +2,11 @@
 Dear CoNEXT '26 AEC, thank you for evaluating our paper's artifacts. You will find the instructions to execute our artifact and reproduce the figures in our paper.
 
 ## Paper Results Reproduction
-### Setup
-We have prepared a configured VM for reproducing our experimental results. The VM can be downloaded here: [TODO]. Alternatively, the following dependencies are required to execute the experiments:
+### Use the Configured VM
+We have prepared a configured VM for reproducing our experimental results. You can download the VM here: [TODO]. The username is ```reviewer```. The password is ```fun```.
+
+### Configure Your Own Machine
+Alternatively, the following dependencies are required to execute the experiments:
 ```
 sudo apt install -y git jupyter-core
 python3 -m pip install notebook numpy matplotlib pandas xgboost scikit-learn-intelex scikit-learn==1.7.1
