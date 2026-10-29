@@ -106,8 +106,9 @@ To run with a different model, put the pretrained model under the ```models``` d
 To run the experiment, we will use ```terminal3``` as the sender and a new terminal, ```terminal4``` to receive packets. First, set up the receiver in ```terminal4```.
 ```
 cd ~/conext26-paper15-artifacts
-sudo python3 recv_tofino_model.py --model ss_dt_ds2 --dataset ciciot22
+sudo python3 recv_tofino_model.py --model ss_dt_ds2 --dataset ciciot22 --pcap [pcap_path]
 ```
+```[pcap_path]``` is the path to the pcap file to be sent by the sender.
 
 Then we can start sending packets in ```terminal3```
 ```
