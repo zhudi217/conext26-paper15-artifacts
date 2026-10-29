@@ -2,11 +2,33 @@
 from __future__ import annotations
 
 import math
+import time
 from dataclasses import dataclass
 from typing import Callable
 
 import matplotlib.pyplot as plt
+from IPython.display import HTML, display
 from matplotlib.ticker import FixedLocator, LogFormatterMathtext, NullLocator
+
+
+class Progress:
+    def __init__(self):
+        self.started = time.perf_counter()
+        self.last_update = -float("inf")
+        self.handle = None
+
+    def update(self, stage, completed, total, force=False):
+        now = time.perf_counter()
+        if not force and now - self.last_update < 1:
+            return
+        elapsed = int(now - self.started)
+        content = HTML(f"<div>{stage}: {completed:,}/{total:,} &middot; "
+                       f"Elapsed: {elapsed // 60}m {elapsed % 60:02d}s</div>")
+        if self.handle is None:
+            self.handle = display(content, display_id=True)
+        else:
+            self.handle.update(content)
+        self.last_update = now
 
 
 @dataclass(frozen=True)
