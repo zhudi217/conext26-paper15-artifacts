@@ -9,7 +9,9 @@ Instructions for deploying ShapeShifter with the Tofino model are here: [TOFINO_
 
 ## Paper Results Reproduction
 ### Install Dependencies
-[TO-DO]
+```
+python3 -m pip install numpy matplotlib pandas xgboost scikit-learn-intelex scikit-learn==1.7.1
+```
 
 ### Execute the Experiments
 To quickly reproduce our figures in the paper, please execute the Jupyter notebooks in the ```test``` directory.
