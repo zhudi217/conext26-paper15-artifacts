@@ -2,13 +2,10 @@
 Dear CoNEXT '26 AEC, thank you for evaluating our paper's artifacts. You will find the instructions to execute our artifact and reproduce the figures in our paper.
 
 ## Deploying ShapeShifter on Intel Tofino 2
-The code, scripts, and instructions for running ShapeShifter on Tofino 2 is located in ```hardware```.
+Instructions for deploying ShapeShifter with the Tofino model are here: [TOFINO_MODEL.md](TOFINO_HARDWARE.md).
 
 ## Deploying ShapeShifter with the Tofino Model
-The code, scripts, and instructions for  running ShapeShifter with the Tofino model is located in ```software```.
+Instructions for deploying ShapeShifter with the Tofino model are here: [TOFINO_MODEL.md](TOFINO_MODEL.md).
 
 ## Paper Results Reproduction
-To reproduce our figures in the paper, please execute the following command and follow the instructions there.
-```
-host$ jupyter notebook reproduction/figure_reproduction.ipynb
-```
+To quickly reproduce our figures in the paper, please execute the Jupyter notebooks in the ```test``` directory.

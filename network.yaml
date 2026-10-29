@@ -1,0 +1,16 @@
+hardware:
+  tofino_address: "128.143.71.4:50052"
+  src:
+    src_mac: "30:3e:a7:05:66:c7"
+    src_port: 136
+  dst:
+    dst_mac: "30:3e:a7:05:65:05"
+    dst_port: 138
+model:
+  tofino_address: "localhost:50052"
+  src:
+    interface: veth1
+    src_mac: "02:00:00:00:00:01"
+  dst:
+    interface: veth3
+    dst_mac: "02:00:00:00:00:02"
