@@ -8,4 +8,8 @@ Instructions for deploying ShapeShifter with the Tofino model are here: [TOFINO_
 Instructions for deploying ShapeShifter with the Tofino model are here: [TOFINO_MODEL.md](TOFINO_MODEL.md).
 
 ## Paper Results Reproduction
+### Install Dependencies
+[TO-DO]
+
+### Execute the Experiments
 To quickly reproduce our figures in the paper, please execute the Jupyter notebooks in the ```test``` directory.
