@@ -98,7 +98,7 @@ Open a new terminal, ```terminal3``` and run the following command. The command 
 cd ~/open-p4studio
 source ~/setup-open-p4studio.bash
 
-cd ~/conext26-paper15-artifacts/software
+cd ~/conext26-paper15-artifacts
 python3 ss_prepare.py --target model --dataset ciciot22 --model ss_dt_ds2
 ```
 To run with a different model, put the pretrained model under ```models``` directory.
@@ -106,13 +106,13 @@ To run with a different model, put the pretrained model under ```models``` direc
 ### Run an Prepared Experiment and Parse the Results
 To run the experiment, we will use ```terminal3``` as the sender and a new terminal, ```terminal4``` to receive packets. First, set up the receiver in ```terminal4```.
 ```
-cd ~/conext26-paper15-artifacts/software
-sudo python3 recv.py --config sram_dt_ds2
+cd ~/conext26-paper15-artifacts
+sudo python3 recv_tofino_model.py --model ss_dt_ds2 --dataset ciciot22
 ```
 
 Then we can start sending packets in ```terminal3```
 ```
-sudo python3 sendp.py --config sram_dt_ds2
+sudo python3 send_tofino_model.py --pcap [pcap_path]
 ```
 The results will be printed out in ```terminal4```. An example output looks like the following:
 ```
