@@ -2,11 +2,21 @@
 Dear CoNEXT '26 AEC, thank you for evaluating our paper's artifacts. You will find the instructions to execute our artifact and reproduce the figures in our paper.
 
 ## Paper Results Reproduction
-### Setup
-We have prepared a configured VM for reproducing our experimental results. The VM can be downloaded here: [TODO]. Alternatively, the following dependencies are required to execute the experiments:
+### Use the Configured VM
+We have prepared a configured VM for reproducing our experimental results. You can download the VM here: [TODO]. The username is ```reviewer```. The password is ```fun```.
+
+### Configure Your Own Machine
+Alternatively, the following dependencies are required to execute the experiments:
 ```
-sudo apt install -y git
+sudo apt install -y git jupyter-core
 python3 -m pip install notebook numpy matplotlib pandas xgboost scikit-learn-intelex scikit-learn==1.7.1
+```
+Optionally, install the ```Times New Roman``` font for correct fonts in the figures.
+```
+sudo add-apt-repository multiverse
+sudo apt update
+sudo apt install ttf-mscorefonts-installer
+fc-cache -f
 ```
 Then clone ShapeShifter
 ```
@@ -14,7 +24,7 @@ git clone https://github.com/zhudi217/conext26-paper15-artifacts.git
 ```
 
 ### Experiment Execution
-The Jupyter notebooks are located in the ```test``` directory. Please execute them to reproduce the results.
+The Jupyter notebooks are located in the ```test``` directory. You can launch Jupyter notebook with ```python3 -m notebook``` and run the notebooks one by one for reproduction.
 
 ### Reconfiguration Test Experiment
 If a real Tofino 2 switch is available, we provide a Python script to reconfigure models on the switch and measure the reconfiguration time. The script is located at ```conext26-paper15-artifacts/test/reconfiguration_test.py```. This script retrieves the IP address of the Tofino 2 switch from ```network.yaml```. To execute the script:
